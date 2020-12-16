@@ -1,4 +1,5 @@
-packages <- c("data.table","tidyverse","skimr","here","lmtest","sandwich","geepack")
+packages <- c("data.table","tidyverse","skimr","here","lmtest","sandwich",
+              "geepack","lme4","RColorBrewer")
 
 for (package in packages) {
   if (!require(package, character.only=T, quietly=T)) {
@@ -24,7 +25,26 @@ cluster_trial <- read_csv("./cluster_trial_data.csv")
 
 cluster_trial %>% print(n=5)
 
-cluster_trial
+cluster_trial %>% 
+  group_by(practice,treatment) %>% 
+  summarize(meanBMI=mean(BMI),
+            numTx=length(BMI))
+
+cluster_trial %>% 
+  group_by(treatment) %>% 
+  summarize(meanBMI=mean(BMI),
+            sdBMI=sd(BMI),
+            numTx=length(BMI))
+
+set.seed(123)
+cluster_trial %>% ggplot(.) +
+  geom_point(aes(x=jitter(treatment,factor=.25),
+                 y=BMI,
+                 color=as.factor(practice)),
+             size=5) +
+  xlab("Treatment") +
+  theme(legend.position = "none")
+
 
 ## compute intracluster correlation coefficient
 bmi_summary <- summary(aov(BMI ~ as.factor(practice),data=cluster_trial)) # type II SS
@@ -95,3 +115,14 @@ summary(mod1_exch)
 mod1_unstr <- geeglm(BMI~treatment, id=practice, data=cluster_trial, corstr="unstructured")
 summary(mod1_unstr)
 
+## use LMM
+mod1_lmm <- lmer(BMI~treatment + (1 | practice), data=cluster_trial)
+summ_mod1_lmm <- summary(mod1_lmm)
+summ_mod1_lmm
+
+str(summ_mod1_lmm)
+
+summ_mod1_lmm$varcor$practice[1]/(summ_mod1_lmm$varcor$practice[1])
+
+
+attributes(summ_mod1_lmm$varcor)
