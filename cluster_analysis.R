@@ -53,7 +53,7 @@ icc <- bmi_summary[[1]][1,2]/sum(bmi_summary[[1]][,2])
 
 icc
 
-## fit model for BMI ignorign clustering
+## fit model for BMI ignoring clustering
 mod1 <- glm(BMI ~ treatment, data=cluster_trial,family=gaussian(link = "identity"))
 
 summary(mod1)$coefficients
@@ -72,11 +72,14 @@ coeftest(mod1,vcov=vcovHC(mod1))[2,2]
 coeftest(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice))[2,2]
 coefci(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice), level = 0.95)[2,]
 
+# gives SE identical to stata
+coeftest(mod1,vcov=vcovCL)[2,2]
+coefci(mod1,vcov=vcovCL, level = 0.95)[2,]
+
 
 
 ## use clustered bootstrap
-seed <- 123
-set.seed(seed)
+set.seed(123)
 boot_func <- function(boot_num){
   clusters <- as.numeric(names(table(cluster_trial$practice)))
   index <- sample(1:length(clusters), length(clusters), replace=TRUE)
@@ -116,13 +119,13 @@ mod1_unstr <- geeglm(BMI~treatment, id=practice, data=cluster_trial, corstr="uns
 summary(mod1_unstr)
 
 ## use LMM
-mod1_lmm <- lmer(BMI~treatment + (1 | practice), data=cluster_trial)
-summ_mod1_lmm <- summary(mod1_lmm)
-summ_mod1_lmm
+mod1_lmm1 <- lmer(BMI~treatment + (1 | practice), data=cluster_trial)
+summ_mod1_lmm1 <- summary(mod1_lmm1)
+summ_mod1_lmm1
 
-str(summ_mod1_lmm)
-
-summ_mod1_lmm$varcor$practice[1]/(summ_mod1_lmm$varcor$practice[1])
+mean(coef(mod1_lmm1)$practice[,1])
 
 
-attributes(summ_mod1_lmm$varcor)
+
+
+
