@@ -21,40 +21,50 @@ theme_set(thm)
 
 
 ## read in data
-cluster_trial <- read_csv("./cluster_trial_data.csv")
+lead_trial <- read_csv("./longitudinal_lead_data.csv")
 
-cluster_trial %>% print(n=5)
+lead_trial <- gather(lead_trial, week, lead_value, L0:L6, factor_key = TRUE) %>%
+  mutate(week = as.numeric(gsub("L", "", week))) %>% 
+  arrange(ID, week) %>% 
+  rename(treatment=Treatment)
 
-cluster_trial %>% 
-  group_by(practice,treatment) %>% 
-  summarize(meanBMI=mean(BMI),
-            numTx=length(BMI))
+lead_trial %>% print(n=10)
 
-cluster_trial %>% 
+lead_trial %>% 
+  group_by(week,treatment) %>% 
+  summarize(mean_lead=mean(lead_value),
+            numTx=length(lead_value))
+
+lead_trial %>% 
   group_by(treatment) %>% 
-  summarize(meanBMI=mean(BMI),
-            sdBMI=sd(BMI),
-            numTx=length(BMI))
+  summarize(mean_lead=mean(lead_value),
+            sd_lead=sd(lead_value),
+            numTx=length(lead_value))
 
-set.seed(123)
-cluster_trial %>% ggplot(.) +
-  geom_point(aes(x=jitter(treatment,factor=.25),
-                 y=BMI,
-                 color=as.factor(practice)),
-             size=5) +
-  xlab("Treatment") +
-  theme(legend.position = "none")
+lead_trial %>% ggplot(.) +
+  geom_point(aes(x=week,
+                 y=lead_value,
+                 color=as.factor(treatment)),
+             size=2,
+             alpha=.5) +
+  geom_line(aes(x=week,
+                y=lead_value,
+                group=ID,
+                color=as.factor(treatment)),
+            alpha=.5) +
+  xlab("week")
 
+lead_trial <- lead_trial %>% mutate(treatment=as.numeric(treatment=="A"))
 
 ## compute intracluster correlation coefficient
-bmi_summary <- summary(aov(BMI ~ as.factor(practice),data=cluster_trial)) # type II SS
+lead_summary <- summary(aov(lead_value ~ as.factor(ID),data=lead_trial)) # type II SS
 
-icc <- bmi_summary[[1]][1,2]/sum(bmi_summary[[1]][,2])
+icc <- lead_summary[[1]][1,2]/sum(lead_summary[[1]][,2])
 
 icc
 
 ## fit model for BMI ignoring clustering
-mod1 <- glm(BMI ~ treatment, data=cluster_trial,family=gaussian(link = "identity"))
+mod1 <- glm(lead_value ~ treatment, data=lead_trial,family=gaussian(link = "identity"))
 
 summary(mod1)$coefficients
 
@@ -62,36 +72,30 @@ coeftest(mod1)[2,]
 
 coefci(mod1, level = 0.95)[2,]
 
-mod1 <- glm(BMI ~ treatment, data=cluster_trial,family=gaussian(link = "identity"))
-
-summary(mod1)$coefficients
-
 
 ## use robust variance for clustering
 coeftest(mod1,vcov=vcovHC(mod1))[2,2]
-coeftest(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice))[2,2]
-coefci(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice), level = 0.95)[2,]
+coeftest(mod1,vcov=vcovHC(mod1,type="HC3",cluster=ID))[2,2]
+coefci(mod1,vcov=vcovHC(mod1,type="HC3",cluster=ID), level = 0.95)[2,]
 
 # gives SE identical to stata
 coeftest(mod1,vcov=vcovCL)[2,2]
 coefci(mod1,vcov=vcovCL, level = 0.95)[2,]
 
-
-
 ## use clustered bootstrap
 set.seed(123)
 boot_func <- function(boot_num){
-  clusters <- as.numeric(names(table(cluster_trial$practice)))
+  clusters <- as.numeric(names(table(lead_trial$ID)))
   index <- sample(1:length(clusters), length(clusters), replace=TRUE)
   bb <- table(clusters[index])
   boot <- NULL
   for(zzz in 1:max(bb)){
-    cc <- cluster_trial[cluster_trial$practice %in% names(bb[bb %in% c(zzz:max(bb))]),]
+    cc <- lead_trial[lead_trial$ID %in% names(bb[bb %in% c(zzz:max(bb))]),]
     cc$b_practice<-paste0(cc$practice,zzz)
     boot <- rbind(boot, cc)
   }
   
-  mod1 <- glm(BMI ~ treatment, data=boot,family=gaussian(link = "identity"))
+  mod1 <- glm(lead_value ~ treatment, data=boot,family=gaussian(link = "identity"))
   res <- cbind(boot_num,coef(mod1)[2])
   return(res)
 }
@@ -109,21 +113,28 @@ LCL
 UCL
 
 ## use GEE
-mod1_ind <- geeglm(BMI~treatment, id=practice, data=cluster_trial, corstr="independence")
+mod1_ind <- geeglm(lead_value~treatment, id=ID, data=lead_trial, corstr="independence")
 summary(mod1_ind)
 
-mod1_exch <- geeglm(BMI~treatment, id=practice, data=cluster_trial, corstr="exchangeable")
+mod1_exch <- geeglm(lead_value~treatment, id=ID, data=lead_trial, corstr="exchangeable")
 summary(mod1_exch)
 
-mod1_unstr <- geeglm(BMI~treatment, id=practice, data=cluster_trial, corstr="unstructured")
+mod1_ar1 <- geeglm(lead_value~treatment, id=ID, data=lead_trial, corstr="ar1")
+summary(mod1_ar1)
+
+mod1_unstr <- geeglm(lead_value~treatment, id=ID, data=lead_trial, corstr="unstructured")
 summary(mod1_unstr)
 
 ## use LMM
-mod1_lmm1 <- lmer(BMI~treatment + (1 | practice), data=cluster_trial)
+mod1_lmm1 <- lmer(lead_value~treatment + (1 | ID), data=lead_trial)
 summ_mod1_lmm1 <- summary(mod1_lmm1)
 summ_mod1_lmm1
 
-mean(coef(mod1_lmm1)$practice[,1])
+mod1_lmm2 <- lmer(lead_value~treatment + (1 + treatment | ID), data=lead_trial)
+summ_mod1_lmm2 <- summary(mod1_lmm2)
+summ_mod1_lmm2
+
+mean(coef(mod1_lmm2)$ID[,1])
 
 
 
