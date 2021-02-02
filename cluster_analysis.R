@@ -1,5 +1,5 @@
 packages <- c("data.table","tidyverse","skimr","here","lmtest","sandwich",
-              "geepack","lme4","RColorBrewer")
+              "geepack","lme4","RColorBrewer","numDeriv")
 
 for (package in packages) {
   if (!require(package, character.only=T, quietly=T)) {
@@ -10,6 +10,9 @@ for (package in packages) {
 for (package in packages) {
   library(package, character.only=T)
 }
+
+remotes::install_github("ikosmidis/enrichwith")
+library(enrichwith)
 
 thm <- theme_classic() +
   theme(
@@ -63,19 +66,19 @@ coeftest(mod1)[2,]
 coefci(mod1, level = 0.95)[2,]
 
 mod1 <- glm(BMI ~ treatment, data=cluster_trial,family=gaussian(link = "identity"))
-
 summary(mod1)$coefficients
 
-
 ## use robust variance for clustering
-coeftest(mod1,vcov=vcovHC(mod1))[2,2]
-coeftest(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice))[2,2]
-coefci(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice), level = 0.95)[2,]
+coeftest(mod1,vcov=vcovCL(mod1,type="HC3",cluster=~practice))[2,2]
+coefci(mod1,vcov=vcovCL(mod1,type="HC3",cluster=~practice), level = 0.95)[2,]
 
 # gives SE identical to stata
-coeftest(mod1,vcov=vcovCL)[2,2]
-coefci(mod1,vcov=vcovCL, level = 0.95)[2,]
+coeftest(mod1,vcov=vcovCL(mod1,type="HC0"))[2,2]
+coefci(mod1,vcov=vcovCL(mod1,type="HC0"), level = 0.95)[2,]
 
+# gives SE identical to GEE below
+coeftest(mod1,vcov=vcovCL(mod1, type="HC0", cluster=~practice, cadjust=F))[2,2]
+coefci(mod1,vcov=vcovCL(mod1, type="HC0", cluster=~practice, cadjust=F), level = 0.95)[2,]
 
 
 ## use clustered bootstrap
@@ -99,7 +102,7 @@ boot_func <- function(boot_num){
 boot_res <- lapply(1:200, function(x) boot_func(x))
 boot_res <- do.call(rbind,boot_res)
 
-sd(boot_res[,2]) ## standard error of the treatment estimate
+sd(boot_res[,2]) ## bootstrap standard error of the treatment estimate
 
 LCL <- mod1$coefficient[2] - 1.96*sd(boot_res[,2])
 UCL <- mod1$coefficient[2] + 1.96*sd(boot_res[,2])
@@ -126,6 +129,62 @@ summ_mod1_lmm1
 mean(coef(mod1_lmm1)$practice[,1])
 
 
+## final table
+
+#ignoring
+ summary(mod1)$coefficients[2,1:2]
+
+#robust var
+coeftest(mod1,vcov=vcovHC(mod1,type="const",cluster=practice))[2,2]
+coefci(mod1,vcov=vcovHC(mod1,type="HC3",cluster=practice), level = 0.95)[2,]
+
+# robust var: gives SE identical to stata
+coeftest(mod1,vcov=vcovCL)[2,2]
+coefci(mod1,vcov=vcovCL, level = 0.95)[2,]
+
+################### playing around #####################
+
+vcov(mod1)
+mod1$residuals%*%mod1$residuals
+
+set.seed(1)
+x <- c(1:4, 7)
+y <- c(5 + rnorm(4,sd = 1.2), 35)
+plot(x, y)
+
+m <- lm(y ~ x)
+summary(m)
+
+mm <- glm(y~x)
+summary(mm)
 
 
+s2 <- deviance(mm)/(length(x)-2) ## recall: deviance generalizes residual sum 
+                                 ## of squares for GLM
+X <- model.matrix(mm)
 
+# recall: if A is a square matrix, solve(A) returns inverse of A
+V_hat <- solve(t(X) %*% X)
+meat <- (t(X) %*% (s2*diag(length(x))) %*% X)
+
+vce <- V_hat %*% meat %*% V_hat
+sqrt(diag(vce))
+
+# boot
+sd(boot_res[,2]) ## standard error of the treatment estimate
+
+LCL <- mod1$coefficient[2] - 1.96*sd(boot_res[,2])
+UCL <- mod1$coefficient[2] + 1.96*sd(boot_res[,2])
+
+mod1$coefficient[2]
+LCL
+UCL
+
+# GEE
+summary(mod1_ind)
+summary(mod1_exch)
+summary(mod1_unstr)
+
+# lmem
+summ_mod1_lmm1
+mean(coef(mod1_lmm1)$practice[,1])
