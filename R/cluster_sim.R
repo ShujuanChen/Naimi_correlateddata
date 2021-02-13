@@ -24,8 +24,8 @@ theme_set(thm)
 
 ## simulated BMI example to demonstrate MLE with clustered data
 set.seed(123)
-n=10000
-id=rep(1:n,each=10)
+n=100000
+id=rep(1:n,each=6)
 rho=0
 phi=1
 s=3.25
@@ -68,7 +68,6 @@ head(sim_dat)
 mean(sim_dat$exposure)
 mean(sim_dat$response)
 var(sim_dat$response)
-hist(sim_dat$response)
 
 sim_summary <- summary(aov(response ~ as.factor(id),data=sim_dat)) # type II SS
 icc <- sim_summary[[1]][1,2]/sum(sim_summary[[1]][,2])
